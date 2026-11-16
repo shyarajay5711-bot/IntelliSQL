@@ -1,7 +1,8 @@
+
 import os
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
 load_dotenv()
@@ -42,3 +43,38 @@ def test_connection():
     with engine.connect() as connection:
         result = connection.exec_driver_sql("SELECT version()")
         return result.scalar()
+
+
+def execute_read_only_query(sql: str):
+    sql = sql.strip()
+
+    if not sql:
+        raise ValueError("SQL query cannot be empty")
+
+    normalized_sql = sql.rstrip(";").strip()
+
+    if ";" in normalized_sql:
+        raise ValueError("Only one SQL statement is allowed")
+
+    if not normalized_sql.upper().startswith(("SELECT", "WITH")):
+        raise ValueError("Only SELECT queries are allowed")
+
+    with engine.connect() as connection:
+        with connection.begin():
+            connection.exec_driver_sql(
+                "SET TRANSACTION READ ONLY"
+            )
+
+            result = connection.execute(text(normalized_sql))
+
+            columns = list(result.keys())
+            rows = [
+                dict(row)
+                for row in result.mappings().fetchmany(100)
+            ]
+
+            return {
+                "columns": columns,
+                "rows": rows,
+                "row_count": len(rows),
+            }

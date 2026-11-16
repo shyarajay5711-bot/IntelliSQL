@@ -21,7 +21,10 @@ import Sidebar from './components/layout/Sidebar'
 import {
   getHealth,
   getDatabaseSchema,
+  generateSQL,
+  executeSQL,
   type DatabaseSchema,
+  type SQLExecutionResponse,
 } from './services/api'
 
 const quickPrompts = [
@@ -60,6 +63,11 @@ function App() {
   const [schema, setSchema] = useState<DatabaseSchema | null>(null)
   const [schemaError, setSchemaError] = useState('')
 
+  const [generatedSql, setGeneratedSql] = useState('')
+  const [queryResult, setQueryResult] =
+    useState<SQLExecutionResponse | null>(null)
+  const [isGenerating, setIsGenerating] = useState(false)
+
   useEffect(() => {
     let active = true
 
@@ -84,7 +92,9 @@ function App() {
         if (!active) return
 
         setApiStatus('disconnected')
-        setSchemaError('Unable to load database information. Check your backend server.')
+        setSchemaError(
+          'Unable to load database information. Check your backend server.',
+        )
       }
     }
 
@@ -112,15 +122,42 @@ function App() {
     setNotice('')
   }
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!prompt.trim()) {
       setNotice('Please enter a question first.')
       return
     }
 
-    setNotice(
-      'Your database is connected. AI SQL generation is not configured yet.',
-    )
+    if (apiStatus !== 'connected') {
+      setNotice('Backend is not connected. Please start your backend server.')
+      return
+    }
+
+    setIsGenerating(true)
+    setNotice('Generating SQL with AI...')
+    setGeneratedSql('')
+    setQueryResult(null)
+
+    try {
+      const generation = await generateSQL(prompt.trim())
+
+      setGeneratedSql(generation.sql)
+      setNotice('SQL generated successfully. Executing query...')
+
+      const result = await executeSQL(generation.sql)
+
+      setQueryResult(result)
+      setNotice(
+        `Success! Query executed and ${result.row_count} records returned.`,
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Something went wrong.'
+
+      setNotice(`Error: ${message}`)
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   const statusLabel = {
@@ -131,7 +168,6 @@ function App() {
 
   return (
     <div className="relative flex min-h-screen overflow-hidden bg-[#070711] text-zinc-100">
-
       {/* Background atmosphere */}
       <div className="pointer-events-none fixed -left-40 -top-40 h-[450px] w-[450px] rounded-full bg-indigo-600/10 blur-[140px]" />
       <div className="pointer-events-none fixed right-0 top-40 h-[450px] w-[450px] rounded-full bg-purple-600/10 blur-[150px]" />
@@ -139,12 +175,13 @@ function App() {
       <Sidebar />
 
       <main className="relative z-10 min-w-0 flex-1">
-
         {/* Topbar */}
         <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-white/[0.07] bg-[#090914]/80 px-6 backdrop-blur-2xl md:px-10">
           <div>
             <p className="text-xs text-zinc-500">Workspace / Overview</p>
-            <p className="mt-1 text-sm font-medium text-zinc-200">Dashboard</p>
+            <p className="mt-1 text-sm font-medium text-zinc-200">
+              Dashboard
+            </p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -170,7 +207,6 @@ function App() {
         </header>
 
         <div className="mx-auto max-w-[1250px] px-6 py-9 md:px-10 md:py-12">
-
           {/* Welcome */}
           <section className="mb-9 flex flex-wrap items-end justify-between gap-5">
             <div>
@@ -180,7 +216,8 @@ function App() {
               </div>
 
               <h1 className="text-3xl font-semibold tracking-tight text-white md:text-[40px]">
-                Your data, <span className="text-indigo-300">in conversation.</span>
+                Your data,{' '}
+                <span className="text-indigo-300">in conversation.</span>
               </h1>
 
               <p className="mt-3 max-w-xl text-sm leading-6 text-zinc-400">
@@ -191,13 +228,14 @@ function App() {
 
             <div className="flex items-center gap-2 rounded-xl border border-white/[0.09] bg-white/[0.035] px-3 py-2.5">
               <Activity size={16} className="text-indigo-300" />
-              <span className="text-xs text-zinc-300">Workspace overview</span>
+              <span className="text-xs text-zinc-300">
+                Workspace overview
+              </span>
             </div>
           </section>
 
           {/* AI Query Workspace */}
           <section className="relative overflow-hidden rounded-3xl border border-indigo-300/[0.16] bg-gradient-to-br from-[#17152b]/90 via-[#11111d]/95 to-[#11101a]/95 p-6 shadow-[0_25px_100px_rgba(0,0,0,0.35)] md:p-8">
-
             <div className="pointer-events-none absolute -right-20 -top-32 h-72 w-72 rounded-full bg-indigo-500/15 blur-[100px]" />
 
             <div className="relative">
@@ -206,8 +244,11 @@ function App() {
                   <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-indigo-300/20 bg-indigo-400/10 text-indigo-300">
                     <Sparkles size={21} />
                   </div>
+
                   <div>
-                    <h2 className="text-base font-semibold">Ask IntelliSQL</h2>
+                    <h2 className="text-base font-semibold">
+                      Ask IntelliSQL
+                    </h2>
                     <p className="mt-1 text-xs text-zinc-500">
                       Natural language to SQL workspace
                     </p>
@@ -231,22 +272,130 @@ function App() {
 
               <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
                 <p className="text-[11px] text-zinc-500">
-                  Be specific. IntelliSQL will help translate your question into SQL.
+                  Be specific. IntelliSQL will help translate your question
+                  into SQL.
                 </p>
 
                 <button
                   onClick={handleGenerate}
-                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 px-5 py-3 text-xs font-semibold text-white shadow-lg shadow-indigo-500/20 transition hover:-translate-y-0.5 hover:brightness-110"
+                  disabled={isGenerating || apiStatus !== 'connected'}
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 px-5 py-3 text-xs font-semibold text-white shadow-lg shadow-indigo-500/20 transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
                 >
-                  Generate SQL
-                  <ArrowRight size={15} />
+                  {isGenerating ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      Generate SQL
+                      <ArrowRight size={15} />
+                    </>
+                  )}
                 </button>
               </div>
 
               {notice && (
-                <p className="mt-4 rounded-xl border border-indigo-400/15 bg-indigo-400/[0.06] px-4 py-3 text-xs text-indigo-200">
+                <p className="mt-4 flex items-center gap-2 rounded-xl border border-indigo-400/15 bg-indigo-400/[0.06] px-4 py-3 text-xs text-indigo-200">
+                  {isGenerating && (
+                    <Loader2 size={14} className="animate-spin" />
+                  )}
+                  {!isGenerating && notice.startsWith('Error:') && (
+                    <AlertCircle size={14} />
+                  )}
                   {notice}
                 </p>
+              )}
+
+              {/* Generated SQL */}
+              {generatedSql && (
+                <div className="mt-6 overflow-hidden rounded-2xl border border-indigo-400/20 bg-black/30">
+                  <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <Code2 size={15} className="text-indigo-300" />
+                      <span className="text-xs font-semibold text-zinc-200">
+                        Generated SQL
+                      </span>
+                    </div>
+
+                    <span className="text-[10px] text-emerald-400">
+                      AI GENERATED
+                    </span>
+                  </div>
+
+                  <pre className="overflow-x-auto p-5 text-xs leading-6 text-indigo-200">
+                    <code>{generatedSql}</code>
+                  </pre>
+                </div>
+              )}
+
+              {/* Query Results */}
+              {queryResult && (
+                <div className="mt-6 overflow-hidden rounded-2xl border border-white/[0.09] bg-black/20">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] px-4 py-4">
+                    <div className="flex items-center gap-2">
+                      <Table2 size={16} className="text-indigo-300" />
+                      <span className="text-xs font-semibold text-zinc-200">
+                        Query Results
+                      </span>
+                    </div>
+
+                    <span className="rounded-full border border-emerald-400/20 bg-emerald-400/[0.07] px-3 py-1 text-[10px] text-emerald-300">
+                      {queryResult.row_count} rows returned
+                    </span>
+                  </div>
+
+                  {queryResult.columns.length > 0 ? (
+                    <div className="max-h-[420px] overflow-auto">
+                      <table className="w-full border-collapse text-left">
+                        <thead className="sticky top-0 bg-[#171525]">
+                          <tr>
+                            {queryResult.columns.map((column) => (
+                              <th
+                                key={column}
+                                className="whitespace-nowrap border-b border-white/[0.08] px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-indigo-200"
+                              >
+                                {column}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+
+                        <tbody>
+                          {queryResult.rows.map((row, rowIndex) => (
+                            <tr
+                              key={rowIndex}
+                              className="border-b border-white/[0.05] transition hover:bg-white/[0.035]"
+                            >
+                              {queryResult.columns.map((column) => (
+                                <td
+                                  key={column}
+                                  className="whitespace-nowrap px-4 py-3 text-xs text-zinc-300"
+                                >
+                                  {row[column] === null
+                                    ? 'NULL'
+                                    : row[column] === undefined
+                                      ? '—'
+                                      : String(row[column])}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="p-5 text-xs text-zinc-500">
+                      The query returned no columns.
+                    </p>
+                  )}
+
+                  {queryResult.rows.length === 0 && (
+                    <p className="border-t border-white/[0.06] p-5 text-xs text-zinc-500">
+                      No records found for this query.
+                    </p>
+                  )}
+                </div>
               )}
 
               <div className="mt-7 border-t border-white/[0.08] pt-5">
@@ -273,13 +422,17 @@ function App() {
           <section className="mt-9">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-white">Database overview</h2>
+                <h2 className="text-sm font-semibold text-white">
+                  Database overview
+                </h2>
                 <p className="mt-1 text-xs text-zinc-500">
                   Live information from your PostgreSQL database
                 </p>
               </div>
 
-              <span className="text-[10px] text-zinc-600">LIVE DATABASE</span>
+              <span className="text-[10px] text-zinc-600">
+                LIVE DATABASE
+              </span>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -314,7 +467,10 @@ function App() {
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-400/15 bg-indigo-400/[0.08] text-indigo-300">
                         <Icon size={18} />
                       </div>
-                      <ArrowUpRight size={15} className="text-zinc-700 transition group-hover:text-indigo-300" />
+                      <ArrowUpRight
+                        size={15}
+                        className="text-zinc-700 transition group-hover:text-indigo-300"
+                      />
                     </div>
 
                     <p className="mt-5 text-3xl font-semibold tracking-tight">
@@ -335,7 +491,9 @@ function App() {
           {/* Actual Database Tables */}
           <section className="mt-9">
             <div className="mb-4">
-              <h2 className="text-sm font-semibold text-white">Database tables</h2>
+              <h2 className="text-sm font-semibold text-white">
+                Database tables
+              </h2>
               <p className="mt-1 text-xs text-zinc-500">
                 Tables and columns retrieved directly from PostgreSQL
               </p>
@@ -419,8 +577,12 @@ function App() {
                             key={`${tableName}-${index}`}
                             className="mb-1 flex items-center gap-2 text-[10px] text-zinc-400"
                           >
-                            <GitBranch size={12} className="text-indigo-300" />
-                            {fk.columns.join(', ')} → {fk.references_table}.{fk.references_columns.join(', ')}
+                            <GitBranch
+                              size={12}
+                              className="text-indigo-300"
+                            />
+                            {fk.columns.join(', ')} → {fk.references_table}.
+                            {fk.references_columns.join(', ')}
                           </p>
                         ))}
                       </div>
@@ -433,7 +595,6 @@ function App() {
 
           {/* Recent Queries and Activity */}
           <section className="mt-9 grid grid-cols-1 gap-5 xl:grid-cols-[1.6fr_1fr]">
-
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.025] p-5">
               <div className="mb-5 flex items-center justify-between">
                 <div>
@@ -487,16 +648,20 @@ function App() {
                 <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
                   <div className="flex items-center gap-3">
                     <Database size={16} className="text-zinc-500" />
-                    <span className="text-xs text-zinc-300">Database connection</span>
+                    <span className="text-xs text-zinc-300">
+                      Database connection
+                    </span>
                   </div>
 
-                  <span className={`flex items-center gap-1.5 text-[10px] ${
-                    apiStatus === 'connected'
-                      ? 'text-emerald-400'
-                      : apiStatus === 'checking'
-                        ? 'text-amber-400'
-                        : 'text-red-400'
-                  }`}>
+                  <span
+                    className={`flex items-center gap-1.5 text-[10px] ${
+                      apiStatus === 'connected'
+                        ? 'text-emerald-400'
+                        : apiStatus === 'checking'
+                          ? 'text-amber-400'
+                          : 'text-red-400'
+                    }`}
+                  >
                     {apiStatus === 'connected' ? (
                       <CheckCircle2 size={12} />
                     ) : (
@@ -513,31 +678,39 @@ function App() {
                 <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
                   <div className="flex items-center gap-3">
                     <Zap size={16} className="text-zinc-500" />
-                    <span className="text-xs text-zinc-300">AI generation API</span>
+                    <span className="text-xs text-zinc-300">
+                      AI generation API
+                    </span>
                   </div>
-                  <span className="flex items-center gap-1.5 text-[10px] text-amber-400">
-                    <CircleDot size={12} /> Not configured
+
+                  <span className="flex items-center gap-1.5 text-[10px] text-emerald-400">
+                    <CheckCircle2 size={12} />
+                    Endpoint available
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Clock3 size={16} className="text-zinc-500" />
-                    <span className="text-xs text-zinc-300">Query history</span>
+                    <span className="text-xs text-zinc-300">
+                      Query history
+                    </span>
                   </div>
-                  <span className="text-[10px] text-zinc-500">Not configured</span>
+                  <span className="text-[10px] text-zinc-500">
+                    Not configured
+                  </span>
                 </div>
               </div>
 
               <div className="mt-6 rounded-xl border border-indigo-400/10 bg-indigo-500/[0.06] p-4">
                 <div className="flex items-center gap-2 text-indigo-300">
                   <Sparkles size={15} />
-                  <p className="text-xs font-semibold">Next step</p>
+                  <p className="text-xs font-semibold">IntelliSQL AI</p>
                 </div>
 
                 <p className="mt-2 text-[11px] leading-5 text-zinc-400">
-                  Your live database schema is connected. Next, we will build
-                  the AI-powered SQL generation engine.
+                  Your PostgreSQL database is connected. Ask a question in
+                  plain English to generate SQL and view your query results.
                 </p>
               </div>
             </div>
@@ -551,7 +724,6 @@ function App() {
               Built for intelligent data exploration
             </p>
           </footer>
-
         </div>
       </main>
     </div>

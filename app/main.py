@@ -3,7 +3,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from app.database.connection import test_connection
+from app.database.connection import (
+    test_connection,
+    execute_read_only_query,
+)
 from app.database.schema_inspector import inspect_database
 from app.database.schema_context import get_schema_context
 from app.services.ai_service import generate_sql
@@ -31,6 +34,10 @@ app.add_middleware(
 
 class SQLRequest(BaseModel):
     question: str = Field(min_length=3, max_length=1000)
+
+
+class SQLExecutionRequest(BaseModel):
+    sql: str = Field(min_length=1, max_length=10000)
 
 
 @app.get("/")
@@ -90,7 +97,33 @@ def generate_sql_endpoint(request: SQLRequest):
         )
 
     except Exception as e:
-         raise HTTPException(
-        status_code=502,
-        detail=f"AI Error: {type(e).__name__}",
-    )
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI Error: {type(e).__name__}",
+        )
+
+
+@app.post("/api/execute-sql")
+def execute_sql_endpoint(request: SQLExecutionRequest):
+    try:
+        result = execute_read_only_query(request.sql)
+
+        return {
+            "status": "success",
+            "sql": request.sql,
+            "columns": result["columns"],
+            "rows": result["rows"],
+            "row_count": result["row_count"],
+        }
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="SQL execution failed. Check the query and database.",
+        )

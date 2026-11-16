@@ -26,24 +26,61 @@ export interface HealthStatus {
   database: string;
 }
 
-export async function getHealth(): Promise<HealthStatus> {
-  const response = await fetch(`${API_BASE_URL}/api/health`);
+export interface SQLGenerationResponse {
+  question: string;
+  sql: string;
+  status: string;
+}
 
+export interface SQLExecutionResponse {
+  status: string;
+  sql: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  row_count: number;
+}
+
+async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    throw new Error("Unable to connect to IntelliSQL API");
+    const errorData = await response.json().catch(() => null);
+    throw new Error(
+      errorData?.detail || `Request failed: ${response.status}`
+    );
   }
 
   return response.json();
 }
 
+export async function getHealth(): Promise<HealthStatus> {
+  const response = await fetch(`${API_BASE_URL}/api/health`);
+  return handleResponse<HealthStatus>(response);
+}
+
 export async function getDatabaseSchema(): Promise<DatabaseSchema> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/database/schema`
-  );
+  const response = await fetch(`${API_BASE_URL}/api/database/schema`);
+  return handleResponse<DatabaseSchema>(response);
+}
 
-  if (!response.ok) {
-    throw new Error("Unable to fetch database schema");
-  }
+export async function generateSQL(
+  question: string
+): Promise<SQLGenerationResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/generate-sql`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
 
-  return response.json();
+  return handleResponse<SQLGenerationResponse>(response);
+}
+
+export async function executeSQL(
+  sql: string
+): Promise<SQLExecutionResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/execute-sql`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sql }),
+  });
+
+  return handleResponse<SQLExecutionResponse>(response);
 }
